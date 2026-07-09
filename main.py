@@ -15,7 +15,12 @@ import os
 import uuid
 from typing import Optional
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+
+load_dotenv()  # carrega variáveis do .env em desenvolvimento local; em
+                # produção (Render/Railway) as variáveis vêm do painel da
+                # plataforma e este comando não tem efeito
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -132,11 +137,44 @@ def _responder_faq_local(pergunta: str) -> Optional[str]:
     return None
 
 
-def _responder_faq_llm(pergunta: str, historico: list[dict]) -> Optional[str]:
+def _responder_faq_gemini(pergunta: str) -> Optional[str]:
     """
-    Tenta responder via modelo generativo. Retorna None se não houver API key
-    configurada ou se a chamada falhar — quem chama essa função trata o
-    fallback para o FAQ local.
+    Usa a API gratuita do Google AI Studio (Gemini). Requer GEMINI_API_KEY.
+    Retorna None se a chave não estiver configurada ou a chamada falhar —
+    quem chama trata o fallback.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return None
+
+    try:
+        import requests
+
+        system_prompt = open(
+            os.path.join(os.path.dirname(__file__), "prompts", "system_prompt.md")
+        ).read()
+
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"gemini-2.5-flash:generateContent?key={api_key}"
+        )
+        body = {
+            "system_instruction": {"parts": [{"text": system_prompt}]},
+            "contents": [{"role": "user", "parts": [{"text": pergunta}]}],
+        }
+        resposta = requests.post(url, json=body, timeout=10)
+        resposta.raise_for_status()
+        dados = resposta.json()
+        return dados["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception:
+        return None
+
+
+def _responder_faq_anthropic(pergunta: str) -> Optional[str]:
+    """
+    Usa a API paga da Anthropic (Claude). Requer ANTHROPIC_API_KEY.
+    Alternativa ao Gemini, caso você queira comparar qualidade de resposta
+    ou já tenha crédito disponível.
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
@@ -161,13 +199,30 @@ def _responder_faq_llm(pergunta: str, historico: list[dict]) -> Optional[str]:
         return None
 
 
+def _responder_faq_llm(pergunta: str, historico: list[dict]) -> Optional[str]:
+    """
+    Tenta responder via modelo generativo, na ordem: Gemini (gratuito) →
+    Anthropic (pago, se configurado). Retorna None se nenhuma chave estiver
+    disponível ou ambas as chamadas falharem — quem chama trata o fallback
+    para o FAQ local.
+    """
+    resposta = _responder_faq_gemini(pergunta)
+    if resposta is not None:
+        return resposta
+    return _responder_faq_anthropic(pergunta)
+
+
 @app.post("/faq")
 def responder_faq(req: PerguntaFaqRequest):
     session_id = _get_or_create_sessao(req.session_id)
     historico = SESSOES[session_id]
 
-    resposta = _responder_faq_llm(req.pergunta, historico)
-    origem = "llm"
+    resposta = _responder_faq_gemini(req.pergunta)
+    origem = "gemini"
+
+    if resposta is None:
+        resposta = _responder_faq_anthropic(req.pergunta)
+        origem = "anthropic"
 
     if resposta is None:
         resposta = _responder_faq_local(req.pergunta)
