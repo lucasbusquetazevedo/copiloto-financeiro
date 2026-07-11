@@ -1,51 +1,98 @@
-#  Copiloto Financeiro
+# Copiloto Financeiro
 
-Um assistente virtual inteligente projetado para responder dúvidas e realizar simulações financeiras básicas. O projeto combina o poder da **IA Generativa** para interpretação de linguagem natural com a precisão de **cálculos determinísticos em Python puro**.
+Assistente virtual para dúvidas e simulações financeiras básicas, combinando
+IA generativa (interpretação de linguagem natural) com cálculo financeiro
+determinístico (Python puro).
 
-Este projeto foi desenvolvido como um desafio prático focado em IA Generativa, engenharia de prompt (*Prompt Engineering*) e arquitetura de agentes.
+Projeto desenvolvido como desafio de trilha em IA Generativa, Prompt
+Engineering e desenvolvimento de agentes.
 
----
-
-> 🚧 **PROJETO EM DESENVOLVIMENTO ATIVO**  
-> Este repositório foi tornado público temporariamente para fins de deploy e testes de infraestrutura na plataforma **Render**. Funcionalidades, rotas e documentação ainda estão sendo refinadas e podem sofrer alterações constantes.
-
-## O que é Real vs. O que é Demonstrativo
-
-Para alinhar expectativas, aqui está o que funciona de verdade e o que foi desenhado apenas para fins de demonstração:
+## O que é real vs. o que é demonstrativo
 
 | Componente | Status | Observação |
-| :--- | :---: | :--- |
-| **Cálculo de Financiamento (Tabela Price)** | Real | Utiliza fórmulas financeiras padrão de mercado, totalmente testadas. |
-| **Cálculo de Juros Compostos** |  Real | Fórmula matemática exata e validada. |
-| **Respostas em Linguagem Natural** | Real | Integração ativa com LLM, contando com um sistema de *fallback* local pré-validado. |
-| **Persistência de Contexto** | Demo | Armazenado temporariamente em memória por sessão. Os dados expiram se o app for reiniciado. |
-| **Recomendação de Investimentos** | Não existe | O agente apenas explica conceitos teóricos e educativos. Ele nunca recomenda produtos (conforme diretrizes em `prompts/system_prompt.md`). |
+|---|---|---|
+| Cálculo de financiamento (Tabela Price) | Real | Fórmula financeira padrão, testada |
+| Cálculo de juros compostos | Real | Fórmula financeira padrão, testada |
+| Respostas em linguagem natural | Real, com fallback | Integração ativa com Gemini; se indisponível, cai para respostas locais pré-validadas |
+| Persistência de contexto | Demonstrativa | Em memória, por sessão. Não sobrevive a restart — suficiente para demo, não para produção |
+| Recomendação financeira | Não existe | O agente explica conceitos, não recomenda produtos específicos (ver `prompts/system_prompt.md`) |
 
-> **Nota importante:** Este repositório **NÃO** é uma plataforma de consultoria financeira real. Trata-se de uma prova de conceito (PoC) para demonstrar como estruturar agentes de IA com travas de segurança (*guardrails*) em cenários onde erros numéricos geram prejuízos reais.
+Este não é um produto de consultoria financeira real. É uma demonstração de
+como estruturar um agente de IA generativa com guardrails para um domínio
+onde erro numérico tem custo alto.
 
----
+## Por que essa arquitetura
 
-## Por que essa Arquitetura?
+O maior risco de um agente financeiro construído sobre um LLM é a
+alucinação de números — o modelo "inventar" uma parcela ou taxa de forma
+plausível, mas errada. Por isso:
 
-O maior perigo ao construir assistentes financeiros baseados em LLMs (Modelos de Linguagem) é a **alucinação de dados**. Um modelo pode inventar parcelas, juros ou taxas que parecem matematicamente corretas, mas estão erradas. 
+- Todo cálculo é feito em Python determinístico (`financas.py`), nunca pelo
+  modelo de linguagem. O LLM só interpreta a pergunta e decide quando chamar
+  a simulação — ele nunca calcula.
+- O FAQ tem fallback local. Se a chamada ao modelo generativo falhar (sem
+  rede, sem API key, rate limit), o sistema responde com conteúdo local
+  pré-validado em vez de quebrar.
+- O prompt do sistema é versionado separadamente (`prompts/system_prompt.md`),
+  não embutido direto no código — fica auditável e fácil de revisar
+  isoladamente.
 
-Para mitigar isso, adotamos as seguintes premissas:
+## Estrutura
 
-* **Cálculos blindados:** Toda e qualquer conta matemática é processada de forma determinística no arquivo `financas.py`. O modelo de IA atua apenas como um "roteador", interpretando o texto do usuário e decidindo *quando* acionar a função correspondente. Ela nunca faz conta de cabeça.
-* **Resiliência local (*Fallback*):** Se a chamada para a API de inteligência artificial falhar (falta de internet, chave inválida ou limite de requisições), o sistema não quebra. Ele recorre a uma base local de perguntas frequentes para manter a aplicação útil.
-* **Prompts auditáveis:** O prompt do sistema foi desacoplado do código-fonte e vive em `prompts/system_prompt.md`. Isso facilita auditorias, ajustes de tom e atualizações rápidas sem mexer na lógica da API.
-
----
-
-## Estrutura do Projeto
-
-```text
+```
 copiloto-financeiro/
-├── main.py                  # API desenvolvida com FastAPI
-├── financas.py              # Biblioteca de cálculos exatos (Price, juros compostos)
-├── debug_gemini.py          # Script utilitário para debug e testes do modelo Gemini
+├── main.py                    # API FastAPI
+├── financas.py                # Cálculos determinísticos (Price, juros compostos)
+├── debug_gemini.py            # Script utilitário para testar a integração com o Gemini isoladamente
 ├── prompts/
-│   └── system_prompt.md     # Engenharia de prompt e diretrizes do agente
+│   └── system_prompt.md       # Prompt do sistema documentado
 ├── tests/
-│   └── test_financas.py     # Suíte de testes unitários matemáticos
-└── requirements.txt         # Dependências do projeto
+│   └── test_financas.py       # Testes das funções financeiras
+├── prompt_lovable_final.md    # Prompt usado para gerar o frontend no Lovable
+├── requirements.txt
+├── Procfile                   # Comando de start para deploy (Render/Railway)
+└── .python-version            # Versão do Python fixada para o deploy
+```
+
+## Como rodar localmente
+
+```bash
+pip install -r requirements.txt
+uvicorn main:app --reload
+```
+
+A API sobe em `http://localhost:8000`. Documentação automática (Swagger) em
+`http://localhost:8000/docs`.
+
+Para habilitar respostas via modelo generativo, defina a variável de
+ambiente `GEMINI_API_KEY` (gratuita, obtida em https://ai.google.dev).
+Sem ela, o FAQ funciona normalmente em modo local. Também é possível usar
+`ANTHROPIC_API_KEY` como alternativa paga — ver `main.py` para a ordem de
+prioridade entre os dois provedores.
+
+## Endpoints principais
+
+- `POST /simular/financiamento` — simulação completa pelo Sistema Price
+- `POST /simular/juros-compostos` — cálculo de montante com juros compostos
+- `POST /faq` — pergunta em linguagem natural sobre conceitos financeiros
+- `GET /sessao/{session_id}` — histórico de interações da sessão
+
+## Rodando os testes
+
+```bash
+python3 tests/test_financas.py
+```
+
+## Frontend
+
+A interface do Copiloto Financeiro foi construída no Lovable e consome esta
+API diretamente.
+
+Link do produto publicado: https://copilot-financ-chat.lovable.app/
+
+O frontend não está vendorizado neste repositório — o código-fonte
+permanece gerenciado na plataforma Lovable, que gera e hospeda a aplicação
+React/Bun a partir de linguagem natural. O prompt completo usado para gerar
+a interface está documentado em `prompt_lovable_final.md`, incluindo a
+especificação exata dos contratos de API (payloads de requisição/resposta)
+usados na integração.
