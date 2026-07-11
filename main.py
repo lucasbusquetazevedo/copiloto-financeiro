@@ -140,34 +140,48 @@ def _responder_faq_local(pergunta: str) -> Optional[str]:
 def _responder_faq_gemini(pergunta: str) -> Optional[str]:
     """
     Usa a API gratuita do Google AI Studio (Gemini). Requer GEMINI_API_KEY.
-    Retorna None se a chave não estiver configurada ou a chamada falhar —
-    quem chama trata o fallback.
+    Retorna None se a chave não estiver configurada ou todas as tentativas
+    falharem — quem chama trata o fallback.
+
+    Tenta 2 modelos (o mais novo e um estável de reserva) com retry curto em
+    cada um, porque erros 503 (servidor sobrecarregado) são comuns e
+    geralmente passageiros — não devem derrubar a demo sem pelo menos
+    tentar de novo.
     """
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         return None
 
-    try:
-        import requests
+    import time
+    import requests
 
-        system_prompt = open(
-            os.path.join(os.path.dirname(__file__), "prompts", "system_prompt.md")
-        ).read()
+    system_prompt = open(
+        os.path.join(os.path.dirname(__file__), "prompts", "system_prompt.md")
+    ).read()
+    body = {
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": [{"role": "user", "parts": [{"text": pergunta}]}],
+    }
 
-        url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"gemini-2.5-flash:generateContent?key={api_key}"
-        )
-        body = {
-            "system_instruction": {"parts": [{"text": system_prompt}]},
-            "contents": [{"role": "user", "parts": [{"text": pergunta}]}],
-        }
-        resposta = requests.post(url, json=body, timeout=10)
-        resposta.raise_for_status()
-        dados = resposta.json()
-        return dados["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception:
-        return None
+    modelos = ["gemini-flash-latest", "gemini-2.5-flash-lite"]
+    tentativas_por_modelo = 2
+
+    for modelo in modelos:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
+        for tentativa in range(tentativas_por_modelo):
+            try:
+                resposta = requests.post(url, json=body, timeout=25)
+                if resposta.status_code == 503:
+                    time.sleep(1.5)
+                    continue
+                resposta.raise_for_status()
+                dados = resposta.json()
+                return dados["candidates"][0]["content"]["parts"][0]["text"]
+            except Exception:
+                time.sleep(0.5)
+                continue
+
+    return None
 
 
 def _responder_faq_anthropic(pergunta: str) -> Optional[str]:
