@@ -129,7 +129,30 @@ def simular_juros_compostos(req: JurosCompostosRequest):
     return {"session_id": session_id, "resultado": resultado}
 
 
+RESPOSTA_REDIRECIONA_SIMULADOR = (
+    "Não calculo valores diretamente por aqui, para evitar erro de estimativa. "
+    "Use o simulador (/simular/financiamento ou /simular/juros-compostos) "
+    "para ver a parcela, os juros totais e a evolução do saldo devedor com "
+    "precisão."
+)
+
+_PALAVRAS_PEDIDO_DE_CALCULO = (
+    "quanto fica", "quanto seria", "quanto ficaria", "qual o valor",
+    "qual a parcela", "valor da parcela", "calcul",
+)
+
+
+def _parece_pedido_de_calculo(pergunta: str) -> bool:
+    pergunta_lower = pergunta.lower()
+    if any(c.isdigit() for c in pergunta_lower):
+        return True
+    return any(frase in pergunta_lower for frase in _PALAVRAS_PEDIDO_DE_CALCULO)
+
+
 def _responder_faq_local(pergunta: str) -> Optional[str]:
+    if _parece_pedido_de_calculo(pergunta):
+        return RESPOSTA_REDIRECIONA_SIMULADOR
+
     pergunta_lower = pergunta.lower()
     for chave, resposta in FAQ_LOCAL.items():
         if chave in pergunta_lower:
