@@ -96,3 +96,7 @@ React/Bun a partir de linguagem natural. O prompt completo usado para gerar
 a interface está documentado em `prompt_lovable_final.md`, incluindo a
 especificação exata dos contratos de API (payloads de requisição/resposta)
 usados na integração.
+
+## Pitch
+
+Link do pitch: https://drive.google.com/drive/my-drive?hl=pt-br
