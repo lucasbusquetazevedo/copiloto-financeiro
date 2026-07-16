@@ -99,4 +99,4 @@ usados na integração.
 
 ## Pitch
 
-Link do pitch: https://drive.google.com/drive/my-drive?hl=pt-br
+Link do pitch: https://drive.google.com/file/d/1QflcH-TFp3NDRrT6jV3TkUsa8GS1BQKh/view?usp=sharing
